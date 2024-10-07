@@ -1,0 +1,5 @@
+*
+# ignore all but these files:
+!.gitignore
+!README.md
+!png_parser.py
