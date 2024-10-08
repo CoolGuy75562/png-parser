@@ -3,7 +3,7 @@ Reads png file, decompresses image data with zlib, decodes image data, then disp
 
 Supports all valid color types and bit depths, but support for interlacing and ancillary chunks is not implemented yet. 
 
-My goal for this project is to understand the png format before moving on to writing a programme to decode jpeg files, which has a much less trivial compression algorithm.
+My goal for this project is to understand the png format before moving on to writing a programme to decode jpeg, which has a much less trivial compression algorithm.
 
 Complete details about the png format can be found here: http://www.libpng.org/pub/png/spec/1.2/PNG-Contents.html
 
