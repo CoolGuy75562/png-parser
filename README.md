@@ -22,7 +22,7 @@ The programme has been tested and gives correct output with this suite of test p
 ## Usage
 Navigate to the png-parser directory and run
 ```bash
-python3 ./png_parser.py --png-file [PNG_FILE ...]
+python3 ./png_parser.py --png-files [PNG_FILE ...]
 ```
 where each argument PNG_FILE to --png-file is the path to a png file.
 
