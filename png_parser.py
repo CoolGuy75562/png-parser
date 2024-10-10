@@ -60,6 +60,20 @@ def parse_IHDR_info(IHDR_data):
             interlace_method
             )
 
+def find_palette_chunk(png_file):
+    """ Returns palette chunk if exists, as well
+    as list of any ancillary chunks read.
+    """
+    ancillary_chunks = []
+    while True:
+        curr_chunk = read_chunk(png_file)
+        if curr_chunk["is ancillary"] == 0:
+            break
+        print(f"Ancillary chunk: {curr_chunk}")
+        ancillary_chunks.append(curr_chunk)
+    assert curr_chunk["chunk type"] == "PLTE", "PLTE chunk must be the first critical chunk after IHDR for color type 3."
+    return curr_chunk, ancillary_chunks
+        
 def get_palette(PLTE_chunk):
     PLTE_data = PLTE_chunk["chunk data"]
     PLTE_data_length = PLTE_chunk["chunk length"]
@@ -73,7 +87,7 @@ def get_palette(PLTE_chunk):
         palette.append([red, green, blue])
     return palette
     
-def display_png_file(filename):
+def read_png_file(filename):
     with open(filename, 'rb') as png_file: # rb: read bytes
         png_signature = png_file.read(8)
         assert png_signature == PNG_SIGNATURE, "first 8 bytes must be the png signature"
@@ -91,22 +105,9 @@ def display_png_file(filename):
         assert color_type in COLOR_TYPES, f"color type must be one of {COLOR_TYPES}"
         assert bit_depth in BIT_DEPTHS[color_type], f"bit depth for color type {color_type} must be one of {BIT_DEPTHS[color_type]}"
 
-       
-        # -- Read chunks
-
-        def find_palette_chunk(png_file):
-            while True:
-                curr_chunk = read_chunk(png_file)
-                if curr_chunk["is ancillary"] == 0:
-                    break
-                print(f"Ancillary chunk: {curr_chunk}")
-                ancillary_chunks.append(curr_chunk)
-            assert curr_chunk["chunk type"] == "PLTE", "PLTE chunk must be the first critical chunk after IDAT for color type 3."
-            return curr_chunk
-    
         ancillary_chunks = []
         if color_type == 3: # indexed color
-            PLTE_chunk = find_palette_chunk(png_file)
+            PLTE_chunk, ancillary_chunks = find_palette_chunk(png_file)
             palette = get_palette(PLTE_chunk)
         IDAT_data = []
         while True:
@@ -120,8 +121,6 @@ def display_png_file(filename):
                 ancillary_chunks.append(curr_chunk)
         IDAT_data = b"".join(IDAT_data)
         png_file.close()
-
-    
     
     # -- Decompress IDAT data
     print(f"compressed IDAT bytes: {str(len(IDAT_data))}")
@@ -176,6 +175,8 @@ def display_png_file(filename):
            }
     bpp = bpp[color_type]
 
+    bytes_per_sample = bit_depth//8
+    
     # -- Color type functions --
     def gs(image_row):
         gs_image_row = []
@@ -196,7 +197,6 @@ def display_png_file(filename):
 
     def rgb(image_row):
         rgb_image_row = []
-        bytes_per_sample = bit_depth//8
         for i in range((scanline_length-1)//bpp):
             pixel_bytes = image_row[bpp*i:bpp*(i+1)]
             red = int.from_bytes(pixel_bytes[0:bytes_per_sample])/(2**bit_depth)
@@ -217,7 +217,6 @@ def display_png_file(filename):
 
     def gsa(image_row):
         gsa_image_row = []
-        bytes_per_sample = bit_depth//8
         for i in range((scanline_length-1)//bpp):
             pixel_bytes = image_row[bpp*i:bpp*(i+1)]
             gs_sample = int.from_bytes(pixel_bytes[0:bytes_per_sample])/(2**bit_depth)
@@ -227,7 +226,6 @@ def display_png_file(filename):
 
     def rgba(image_row):
         rgba_image_row = []
-        bytes_per_sample = bit_depth//8
         for i in range((scanline_length-1)//bpp):
             pixel_bytes = image_row[bpp*i:bpp*(i+1)]
             red = int.from_bytes(pixel_bytes[0:bytes_per_sample])/(2**bit_depth)
@@ -256,7 +254,6 @@ def display_png_file(filename):
     # Now we are ready to undo the filter from each scanline and format the pixels according to the color type. 
     image = []
     b_row = [0]*(scanline_length-1) # row above first row is zero
-    c_row = b_row
     for i in range(height):
         scanline = decomped_IDAT_data[i*scanline_length:(i+1)*scanline_length]
         filter_type = int.from_bytes(scanline[0:1])
@@ -292,7 +289,7 @@ def main():
     args = parser.parse_args()
     for png_file in args.png_files:
         print(f"Reading {png_file.name}...")
-        display_png_file(png_file.name)
+        read_png_file(png_file.name)
     
 if __name__ == '__main__':
     main()
