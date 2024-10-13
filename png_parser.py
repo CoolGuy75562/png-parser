@@ -106,6 +106,7 @@ def read_png_file(filename):
         assert bit_depth in BIT_DEPTHS[color_type], f"bit depth for color type {color_type} must be one of {BIT_DEPTHS[color_type]}"
 
         ancillary_chunks = []
+        palette = None
         if color_type == 3: # indexed color
             PLTE_chunk, ancillary_chunks = find_palette_chunk(png_file)
             palette = get_palette(PLTE_chunk)
@@ -121,14 +122,19 @@ def read_png_file(filename):
                 ancillary_chunks.append(curr_chunk)
         IDAT_data = b"".join(IDAT_data)
         png_file.close()
-    
+
+        return (width, height, bit_depth, color_type), IDAT_data, palette
+
     # -- Decompress IDAT data
+def decompress_IDAT_data(IDAT_data, method='zlib'):
     print(f"compressed IDAT bytes: {str(len(IDAT_data))}")
     decomped_IDAT_data = zlib.decompress(IDAT_data)
     print(f"decompressed IDAT bytes: {str(len(decomped_IDAT_data))}\n")
+    return decomped_IDAT_data
 
     # Now we define some functions for decoding the IDAT data, and converting rows of bytes to rows of pixels according to the color type and bit depth.
-    
+def decode_image_data(image_info, decomped_IDAT_data, palette=None):
+    width, height, bit_depth, color_type = image_info
     # -- Filter functions --
     def none_filter(x, a, b, c):
         return x
@@ -286,10 +292,15 @@ def read_png_file(filename):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--png-files', nargs='*', required=True, type=argparse.FileType('rb'))
+    parser.add_argument('-d', '--decode', action='store_false')
     args = parser.parse_args()
     for png_file in args.png_files:
-        print(f"Reading {png_file.name}...")
-        read_png_file(png_file.name)
-    
+        print(f"\nReading {png_file.name}...\n")
+        image_info, IDAT_data, palette = read_png_file(png_file.name)
+        if args.decode:
+            decode_image_data(image_info, decompress_IDAT_data(IDAT_data), palette=palette)
+        else:
+            print(IDAT_data)
+            
 if __name__ == '__main__':
     main()
