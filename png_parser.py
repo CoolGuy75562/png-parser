@@ -1,4 +1,3 @@
-import sys
 import argparse
 import zlib
 import matplotlib.pyplot as plt
@@ -60,7 +59,7 @@ def parse_IHDR_info(IHDR_data):
             interlace_method
             )
 
-def find_palette_chunk(png_file):
+def find_palette_chunk(png_file, decode_flag):
     """ Returns palette chunk if exists, as well
     as list of any ancillary chunks read.
     """
@@ -69,7 +68,7 @@ def find_palette_chunk(png_file):
         curr_chunk = read_chunk(png_file)
         if curr_chunk["is ancillary"] == 0:
             break
-        print(f"Ancillary chunk: {curr_chunk}")
+        if decode_flag: print(f"Ancillary chunk: {curr_chunk}")
         ancillary_chunks.append(curr_chunk)
     assert curr_chunk["chunk type"] == "PLTE", "PLTE chunk must be the first critical chunk after IHDR for color type 3."
     return curr_chunk, ancillary_chunks
@@ -87,7 +86,11 @@ def get_palette(PLTE_chunk):
         palette.append([red, green, blue])
     return palette
     
-def read_png_file(filename):
+def read_png_file(filename, decode_flag):
+    """ Parses the png file with file name filename. Information about the file
+    is printed if decode_flag is true.
+    """
+    if decode_flag: print(f"\nReading {filename}...\n")
     with open(filename, 'rb') as png_file: # rb: read bytes
         png_signature = png_file.read(8)
         assert png_signature == PNG_SIGNATURE, "first 8 bytes must be the png signature"
@@ -108,7 +111,7 @@ def read_png_file(filename):
         ancillary_chunks = []
         palette = None
         if color_type == 3: # indexed color
-            PLTE_chunk, ancillary_chunks = find_palette_chunk(png_file)
+            PLTE_chunk, ancillary_chunks = find_palette_chunk(png_file, decode_flag)
             palette = get_palette(PLTE_chunk)
         IDAT_data = []
         while True:
@@ -118,7 +121,7 @@ def read_png_file(filename):
             elif curr_chunk["chunk type"] == "IDAT":
                 IDAT_data.append(curr_chunk["chunk data"])
             else:
-                print(f"Ancillary chunk: {curr_chunk}")
+                if decode_flag: print(f"Ancillary chunk: {curr_chunk}")
                 ancillary_chunks.append(curr_chunk)
         IDAT_data = b"".join(IDAT_data)
         png_file.close()
@@ -295,8 +298,7 @@ def main():
     parser.add_argument('-d', '--decode', action='store_false')
     args = parser.parse_args()
     for png_file in args.png_files:
-        print(f"\nReading {png_file.name}...\n")
-        image_info, IDAT_data, palette = read_png_file(png_file.name)
+        image_info, IDAT_data, palette = read_png_file(png_file.name, args.decode)
         if args.decode:
             decode_image_data(image_info, decompress_IDAT_data(IDAT_data), palette=palette)
         else:
