@@ -2,4 +2,5 @@
 # ignore all but these files:
 !.gitignore
 !README.md
+!database.py
 !png_parser.py

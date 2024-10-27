@@ -1,7 +1,14 @@
+""" This module contains functions to parse, decode, and display png files,
+    and the main function where we deal with command line options.
+"""
+import typing
 import argparse
 import zlib
+import sqlite3
+import sys
 import matplotlib.pyplot as plt
 import numpy as np
+import database
 
 PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 FILTER_METHOD = 0
@@ -15,7 +22,55 @@ BIT_DEPTHS = {0: [1, 2, 4, 8, 16],
               6: [8, 16]
               }
 
-def read_chunk(png_file):
+color_type_str = {0: "(grayscale)",
+                  2: "(rgb)",
+                  3: "(indexed color)",
+                  4: "(grayscale alpha)",
+                  6: "(rgb alpha)"
+                  }
+compression_method_str = {0: "(DEFLATE)"}
+interlace_method_str = {0: "(no interlace)",
+                        1: "(Adam7 interlace)"
+                        }
+
+# these are used in decoding scanlines of uncompressed IDAT data
+def none_filter(x, a, b, c):
+    return x
+    
+def prior_filter(x, a, b, c):
+    return (x + a) % 256
+
+def up_filter(x, a, b, c):
+    return (x + b) % 256
+
+def average_filter(x, a, b, c):
+    return (x + (a + b)//2) % 256
+    
+def paeth_filter(x, a, b, c):
+    p = a + b - c
+    pa = abs(p-a)
+    pb = abs(p-b)
+    pc = abs(p-c)
+    if pa <= pb and pa <= pc:
+        Pr = a
+    elif pb <= pc:
+        Pr = b
+    else:
+        Pr = c
+    return (x + Pr) % 256
+
+undo_filter = (none_filter,
+               prior_filter,
+               up_filter,
+               average_filter,
+               paeth_filter
+               )
+
+def ceil_div(a, b):
+    return -(a // -b)
+    
+def read_chunk(png_file) -> dict:
+    """ Read next chunk from file object pointing to the start of a chunk. """
     chunk_length_bytes = png_file.read(4)
     chunk_length = int.from_bytes(chunk_length_bytes)
     
@@ -32,17 +87,18 @@ def read_chunk(png_file):
     chunk_crc = int.from_bytes(png_file.read(4))
     actual_crc = zlib.crc32(chunk_type_bytes + chunk_data)
     assert actual_crc == chunk_crc, "failed chunk checksum"
-    return {"chunk length" : chunk_length,
-            "chunk type" : chunk_type,
-            "is ancillary" : is_ancillary,
-            "is private" : is_private,
-            "is reserved" : is_reserved,
-            "is safe to copy" : is_safe_to_copy,
-            "chunk data" : chunk_data,
-            "chunk crc" : chunk_crc
+    return {"chunk_length" : chunk_length,
+            "chunk_type" : chunk_type,
+            "is_ancillary" : is_ancillary,
+            "is_private" : is_private,
+            "is_reserved" : is_reserved,
+            "is_safe_to_copy" : is_safe_to_copy,
+            "chunk_data" : chunk_data,
+            "chunk_crc" : chunk_crc
             }
     
-def parse_IHDR_info(IHDR_data):
+def parse_IHDR_data(IHDR_data: bytes) -> dict:
+    """ Parse information from the data field of an IHDR chunk. """
     width = int.from_bytes(IHDR_data[0:4])
     height = int.from_bytes(IHDR_data[4:8])
     bit_depth = int.from_bytes(IHDR_data[8:9])
@@ -50,32 +106,25 @@ def parse_IHDR_info(IHDR_data):
     compression_method = int.from_bytes(IHDR_data[10:11])
     filter_method = int.from_bytes(IHDR_data[11:12])
     interlace_method = int.from_bytes(IHDR_data[12:13])
-    return (width,
-            height,
-            bit_depth,
-            color_type,
-            compression_method,
-            filter_method,
-            interlace_method
-            )
-
-def find_palette_chunk(png_file, decode_flag):
-    """ Returns palette chunk if exists, as well
-    as list of any ancillary chunks read.
-    """
-    ancillary_chunks = []
-    while True:
-        curr_chunk = read_chunk(png_file)
-        if curr_chunk["is ancillary"] == 0:
-            break
-        if decode_flag: print(f"Ancillary chunk: {curr_chunk}")
-        ancillary_chunks.append(curr_chunk)
-    assert curr_chunk["chunk type"] == "PLTE", "PLTE chunk must be the first critical chunk after IHDR for color type 3."
-    return curr_chunk, ancillary_chunks
+    assert filter_method == FILTER_METHOD, "filter method must be 0"
+    assert compression_method == COMPRESSION_METHOD, "compression method must be 0"
+    assert interlace_method in INTERLACE_METHODS, "interlace method must be 0 or 1"
+    assert interlace_method == 0, "interlaced images not supported"    
+    assert color_type in COLOR_TYPES, f"color type must be one of {COLOR_TYPES}"
+    assert bit_depth in BIT_DEPTHS[color_type], f"bit depth for color type {color_type} must be one of {BIT_DEPTHS[color_type]}"
+    return {"width": width,
+            "height": height,
+            "bit_depth": bit_depth,
+            "color_type": color_type,
+            "compression_method": compression_method,
+            "filter_method": filter_method,
+            "interlace_method": interlace_method
+            }
         
-def get_palette(PLTE_chunk):
-    PLTE_data = PLTE_chunk["chunk data"]
-    PLTE_data_length = PLTE_chunk["chunk length"]
+def get_palette(PLTE_chunk: dict) -> list[list]:
+    """ Get the pallete data from a PLTE chunk. """
+    PLTE_data = PLTE_chunk["chunk_data"]
+    PLTE_data_length = PLTE_chunk["chunk_length"]
     palette = []
     assert PLTE_data_length % 3 == 0, "PLTE data length must be divisible by 3"
     n_entries = PLTE_data_length//3
@@ -86,95 +135,66 @@ def get_palette(PLTE_chunk):
         palette.append([red, green, blue])
     return palette
     
-def read_png_file(filename, decode_flag):
-    """ Parses the png file with file name filename. Information about the file
-    is printed if decode_flag is true.
+def read_png_file(filename: str) -> tuple[dict, dict|None, bytes, list[dict], list[dict]]:
+    """ Opens file filename, checks that it is a valid png file, then returns
+        information needed to decode the image, and lists of the chunks read.
+
+    Args:
+        filename: The name of the png file to be read.
+
+    Returns:
+        IHDR_info: A dictionary containing the information from the IHDR chunk.
+        PLTE_chunk: The PLTE chunk if exists, else None
+        IDAT_data: The concatenation of the data fields of the IDAT chunks in order they are read.
+        ancillary_chunks: A list containing the ancillary chunks
+        chunks: A list containing every chunk.
     """
-    if decode_flag: print(f"\nReading {filename}...\n")
     with open(filename, 'rb') as png_file: # rb: read bytes
         png_signature = png_file.read(8)
         assert png_signature == PNG_SIGNATURE, "first 8 bytes must be the png signature"
 
+        chunks = []
         IHDR_chunk = read_chunk(png_file)
-        assert IHDR_chunk["chunk type"] == 'IHDR', "IHDR chunk must appear first"
-        
-        width, height, bit_depth, color_type, compression_method, filter_method, interlace_method = parse_IHDR_info(IHDR_chunk["chunk data"])
-                
-        assert filter_method == FILTER_METHOD, "filter method must be 0"
-        assert compression_method == COMPRESSION_METHOD, "compression method must be 0"
-        assert interlace_method in INTERLACE_METHODS, "interlace method must be 0 or 1"
-        assert interlace_method == 0, "interlaced images not supported"
-        
-        assert color_type in COLOR_TYPES, f"color type must be one of {COLOR_TYPES}"
-        assert bit_depth in BIT_DEPTHS[color_type], f"bit depth for color type {color_type} must be one of {BIT_DEPTHS[color_type]}"
-
+        assert IHDR_chunk["chunk_type"] == 'IHDR', "IHDR chunk must appear first"
+        chunks.append(IHDR_chunk)
         ancillary_chunks = []
-        palette = None
-        if color_type == 3: # indexed color
-            PLTE_chunk, ancillary_chunks = find_palette_chunk(png_file, decode_flag)
-            palette = get_palette(PLTE_chunk)
-        IDAT_data = []
+        IDAT_chunks = []
+        PLTE_chunk = None
         while True:
             curr_chunk = read_chunk(png_file)
-            if curr_chunk["chunk type"] == "IEND":
+            if curr_chunk["chunk_type"] == "IEND":
+                chunks.append(curr_chunk)
                 break
-            elif curr_chunk["chunk type"] == "IDAT":
-                IDAT_data.append(curr_chunk["chunk data"])
+            elif curr_chunk["chunk_type"] == "IDAT":
+                IDAT_chunks.append(curr_chunk)
+                chunks.append(curr_chunk)
+            elif curr_chunk["chunk_type"] == "PLTE":
+                PLTE_chunk = curr_chunk
+                chunks.append(curr_chunk)
             else:
-                if decode_flag: print(f"Ancillary chunk: {curr_chunk}")
                 ancillary_chunks.append(curr_chunk)
-        IDAT_data = b"".join(IDAT_data)
+                chunks.append(curr_chunk)
         png_file.close()
 
-        return (width, height, bit_depth, color_type), IDAT_data, palette
+        IHDR_info = parse_IHDR_data(IHDR_chunk["chunk_data"])
+        IDAT_data = b''.join([chunk["chunk_data"] for chunk in IDAT_chunks])
+        return IHDR_info, PLTE_chunk, IDAT_data, ancillary_chunks, chunks
 
-    # -- Decompress IDAT data
-def decompress_IDAT_data(IDAT_data, method='zlib'):
-    print(f"compressed IDAT bytes: {str(len(IDAT_data))}")
-    decomped_IDAT_data = zlib.decompress(IDAT_data)
-    print(f"decompressed IDAT bytes: {str(len(decomped_IDAT_data))}\n")
-    return decomped_IDAT_data
+def extract_IDAT_data(IDAT_chunks: list[dict]) -> bytes:
+    return b"".join([chunk["chunk_data"] for chunk in IDAT_chunks])
 
-    # Now we define some functions for decoding the IDAT data, and converting rows of bytes to rows of pixels according to the color type and bit depth.
-def decode_image_data(image_info, decomped_IDAT_data, palette=None):
-    width, height, bit_depth, color_type = image_info
-    # -- Filter functions --
-    def none_filter(x, a, b, c):
-        return x
+def decode_image_data(IHDR_info: dict,
+                      decomped_IDAT_data: bytes,
+                      PLTE_chunk: dict
+                      ) -> list[list]:
+    """ Decodes decompressed IDAT data according to color_type, bit_depth etc.,
+    and returns the resulting image.
+    """
+    width, height, bit_depth, color_type = IHDR_info["width"], IHDR_info["height"], IHDR_info["bit_depth"], IHDR_info["color_type"]
+    if PLTE_chunk:
+        assert color_type in [2, 3, 6]
+        palette = get_palette(PLTE_chunk)
         
-    def prior_filter(x, a, b, c):
-        return (x + a) % 256
-
-    def up_filter(x, a, b, c):
-        return (x + b) % 256
-
-    def average_filter(x, a, b, c):
-        return (x + (a + b)//2) % 256
-        
-    def paeth_filter(x, a, b, c):
-        p = a + b - c
-        pa = abs(p-a)
-        pb = abs(p-b)
-        pc = abs(p-c)
-        if pa <= pb and pa <= pc:
-            Pr = a
-        elif pb <= pc:
-            Pr = b
-        else:
-            Pr = c
-        return (x + Pr) % 256
-
-    undo_filter = (none_filter,
-                   prior_filter,
-                   up_filter,
-                   average_filter,
-                   paeth_filter
-                   )
-
-    
-    def ceil_div(a, b):
-        return -(a // -b)
-
     # bpp: bytes per pixel, rounded up
     bpp = {0: ceil_div(bit_depth, 8),
            2: 3*bit_depth//8,
@@ -187,7 +207,9 @@ def decode_image_data(image_info, decomped_IDAT_data, palette=None):
     bytes_per_sample = bit_depth//8
     
     # -- Color type functions --
-    def gs(image_row):
+    # matplotlib.imshow() doesn't do integer samples with points larger than 255
+    # so for higher bit depth we have to convert to float in range [0, 1]
+    def gs(image_row: bytes) -> list[int]:
         gs_image_row = []
         for i in range((scanline_length-1)//2):
             two_bytes = int.from_bytes(image_row[2*i:2*(i+1)])
@@ -204,7 +226,7 @@ def decode_image_data(image_info, decomped_IDAT_data, palette=None):
                 gs_image_row.append(pixel)
         return gs_image_row
 
-    def rgb(image_row):
+    def rgb(image_row: bytes) -> list[list[int]]:
         rgb_image_row = []
         for i in range((scanline_length-1)//bpp):
             pixel_bytes = image_row[bpp*i:bpp*(i+1)]
@@ -214,7 +236,7 @@ def decode_image_data(image_info, decomped_IDAT_data, palette=None):
             rgb_image_row.append([red, green, blue])
         return rgb_image_row
 
-    def ci(image_row):
+    def ci(image_row: bytes) -> list[list[int]]:
         ci_image_row = []
         for i in range(scanline_length-1):
             ci_byte = int.from_bytes(image_row[i:i+1])
@@ -224,7 +246,7 @@ def decode_image_data(image_info, decomped_IDAT_data, palette=None):
                 ci_image_row.append(palette[idx])
         return ci_image_row
 
-    def gsa(image_row):
+    def gsa(image_row: bytes) -> list[list[int]]:
         gsa_image_row = []
         for i in range((scanline_length-1)//bpp):
             pixel_bytes = image_row[bpp*i:bpp*(i+1)]
@@ -233,7 +255,7 @@ def decode_image_data(image_info, decomped_IDAT_data, palette=None):
             gsa_image_row.append([gs_sample, alpha])
         return gsa_image_row
 
-    def rgba(image_row):
+    def rgba(image_row: bytes) -> list[list[int]]:
         rgba_image_row = []
         for i in range((scanline_length-1)//bpp):
             pixel_bytes = image_row[bpp*i:bpp*(i+1)]
@@ -260,7 +282,6 @@ def decode_image_data(image_info, decomped_IDAT_data, palette=None):
                        }
     scanline_length = scanline_length[color_type] # length of scanline including filter byte
 
-    # Now we are ready to undo the filter from each scanline and format the pixels according to the color type. 
     image = []
     b_row = [0]*(scanline_length-1) # row above first row is zero
     for i in range(height):
@@ -277,6 +298,10 @@ def decode_image_data(image_info, decomped_IDAT_data, palette=None):
             a = image_row[j-bpp+1] if j-bpp+1 >= 0 else 0
         b_row = image_row
         image.append(row_to_pixels(image_row))
+    return image
+
+def show_image(image, color_type, bit_depth):
+    """ Displays image in matplotlib plot. """
     fig = plt.figure()
     ax = fig.add_subplot(111)
     
@@ -292,17 +317,120 @@ def decode_image_data(image_info, decomped_IDAT_data, palette=None):
         ax.imshow(image, aspect='equal', interpolation='none', vmin=0, vmax=2**bit_depth)
     plt.show()
 
+def print_info(file_name: str, IHDR_info: dict) -> None:
+    print(f"IHDR information for {file_name}:")
+    print(f"width: {IHDR_info['width']}")
+    print(f"height: {IHDR_info['height']}")
+    print(f"bit depth: {IHDR_info['bit_depth']}")
+    print(f"color type: {IHDR_info['color_type']} {color_type_str[IHDR_info['color_type']]}")
+    print(f"compression method: {IHDR_info['compression_method']} {compression_method_str[IHDR_info['compression_method']]}")
+    print(f"filter method: {IHDR_info['filter_method']}")
+    print(f"interlace method: {IHDR_info['interlace_method']} {interlace_method_str[IHDR_info['interlace_method']]}\n")
+
+def print_chunks(file_name: str, chunks: list[dict]) -> None:
+    print(f"Chunks contained in {file_name}:")
+    for i, chunk in enumerate(chunks):
+        print(f"{i}: {chunk['chunk_type']}")
+    print()
+    
+def start_database():
+    db = database.Database()
+    if not db.connect():
+        return None
+    else: return db
+    
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--png-files', nargs='*', required=True, type=argparse.FileType('rb'))
-    parser.add_argument('-d', '--decode', action='store_false')
-    args = parser.parse_args()
-    for png_file in args.png_files:
-        image_info, IDAT_data, palette = read_png_file(png_file.name, args.decode)
-        if args.decode:
-            decode_image_data(image_info, decompress_IDAT_data(IDAT_data), palette=palette)
+
+    # Here we define what happens for the different positional arguments
+    def store(args):
+        db = start_database()
+        if not db: sys.exit(1)
+
+        for png_file in args.png_files:
+            IHDR_info, _, _, _, all_chunks= read_png_file(png_file.name)
+            print(f"Inserting {png_file.name} data into db.db...")
+            png_info_insert_success = db.insert_png_info(png_file.name, IHDR_info)
+            if png_info_insert_success:
+                for chunk in all_chunks:
+                    chunk_insert_success = db.insert_chunk(chunk)
+                    if not chunk_insert_success:
+                        break
+                if chunk_insert_success: 
+                    print("Saving changes...")
+                    db.save_changes()
+                    print("Done!\n")
+                else:
+                    print("Changes not saved\n")
+                    break
+            else: print("Changes not saved\n")
+        db.close()
+
+    def info(args):
+        if args.chunks:
+            for png_file in args.png_files:
+                IHDR_info, _, _, _, all_chunks = read_png_file(png_file.name)
+                print(80*"=")
+                print_info(png_file.name, IHDR_info)
+                print_chunks(png_file.name, all_chunks)
         else:
-            print(IDAT_data)
-            
+            for png_file in args.png_files:
+                IHDR_info, _, _, _, _ = read_png_file(png_file.name)
+                print(80*"=")
+                print_info(png_file.name, IHDR_info)
+
+    def view(args):
+        if args.png_file == 'random':
+            db = start_database()
+            if not db: sys.exit(1)
+            print("Opening random image from db.db...")
+            IHDR_info, PLTE_chunk, IDAT_data = db.get_random_png_file()
+            db.close()
+            if not any((IHDR_info, PLTE_chunk, IDAT_data)):
+                print("Error retrieving image from db.db.")
+                print("If the database is empty, you can store images using the store argument.")
+        else:
+            IHDR_info, PLTE_chunk, IDAT_data, _, _ = read_png_file(args.png_file)
+        decomped_IDAT_data = zlib.decompress(IDAT_data)
+        image = decode_image_data(IHDR_info, decomped_IDAT_data, PLTE_chunk)
+        show_image(image, IHDR_info["color_type"], IHDR_info["bit_depth"])
+                       
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+    store_parser = subparsers.add_parser('store',
+                                         help='store png files in database'
+                                         )
+    store_parser.set_defaults(func=store)
+    store_parser.add_argument('png_files',
+                             nargs='*',
+                             type=argparse.FileType('rb'),
+                             help='png files to be stored in database'
+                             )
+
+    info_parser = subparsers.add_parser('info',
+                                        help='view information about given png files'
+                                        )
+    info_parser.set_defaults(func=info)
+    info_parser.add_argument('-c', '--chunks',
+                             action='store_true',
+                             help='for each png file print a list of its chunks in order of occurrence'
+                             )
+    info_parser.add_argument('png_files',
+                             nargs='*',
+                             type=argparse.FileType('rb'),
+                             help='list of png files'
+                             )
+
+    view_parser = subparsers.add_parser('view',
+                                        help='view a random image stored in the database, or a png file if specified'
+                                        )
+    view_parser.set_defaults(func=view)
+    view_parser.add_argument('png_file',
+                             nargs='?',
+                             help='png file to view',
+                             default='random'
+                             )
+    args = parser.parse_args()
+    args.func(args)
+  
 if __name__ == '__main__':
     main()
