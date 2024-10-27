@@ -151,7 +151,11 @@ class Database:
         and information needed to decode and plot the image. """
         try:
             self.cur.execute("SELECT png_id FROM png_info ORDER BY RANDOM() LIMIT 1")
-            random_id = self.cur.fetchone()[0]
+            random_id = self.cur.fetchone()
+            if random_id is None:
+                return None, None, None
+            else:
+                random_id = random_id[0]
             self.cur.execute("""SELECT
                                 file_path,
                                 width,

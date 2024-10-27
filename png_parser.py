@@ -1,6 +1,16 @@
-""" This module contains functions to parse, decode, and display png files,
-    and the main function where we deal with command line options.
-"""
+""" This module contains functions to parse, decode, and display png files."""
+# Copyright (C) 2024  CoolGuy75562
+#
+#     This program is free software: you can redistribute it and/or modify
+#     it under the terms of the GNU General Public License as published by
+#     the Free Software Foundation, either version 3 of the License, or
+#     (at your option) any later version.
+#
+#     This program is distributed in the hope that it will be useful,
+#     but WITHOUT ANY WARRANTY; without even the implied warranty of
+#     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#     GNU General Public License for more details.
+
 import typing
 import argparse
 import zlib
@@ -8,7 +18,8 @@ import sqlite3
 import sys
 import matplotlib.pyplot as plt
 import numpy as np
-import database
+
+import database # database.py
 
 PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 FILTER_METHOD = 0
@@ -257,6 +268,10 @@ def decode_image_data(IHDR_info: dict,
 
     def rgba(image_row: bytes) -> list[list[int]]:
         rgba_image_row = []
+        red = image_row[0::bytes_per_sample]
+        green = image_row[1::bytes_per_sample]
+        blue = image_row[2::bytes_per_sample]
+        alpha = image_row[3::bytes_per_sample]
         for i in range((scanline_length-1)//bpp):
             pixel_bytes = image_row[bpp*i:bpp*(i+1)]
             red = int.from_bytes(pixel_bytes[0:bytes_per_sample])/(2**bit_depth)
@@ -341,7 +356,7 @@ def start_database():
     
 def main():
 
-    # Here we define what happens for the different positional arguments
+    # In these functions we define what happens for the different positional arguments
     def store(args):
         db = start_database()
         if not db: sys.exit(1)
