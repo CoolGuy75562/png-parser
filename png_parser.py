@@ -268,10 +268,6 @@ def decode_image_data(IHDR_info: dict,
 
     def rgba(image_row: bytes) -> list[list[int]]:
         rgba_image_row = []
-        red = image_row[0::bytes_per_sample]
-        green = image_row[1::bytes_per_sample]
-        blue = image_row[2::bytes_per_sample]
-        alpha = image_row[3::bytes_per_sample]
         for i in range((scanline_length-1)//bpp):
             pixel_bytes = image_row[bpp*i:bpp*(i+1)]
             red = int.from_bytes(pixel_bytes[0:bytes_per_sample])/(2**bit_depth)
