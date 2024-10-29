@@ -434,7 +434,7 @@ def start_database() -> database.Database | type(None):
 
 
 # Command line options:
-def store(args: argparse.NameSpace) -> None:
+def store(args: argparse.Namespace) -> None:
     """ Store information about each png file in list in a database. """
     db = start_database()
     if not db:
@@ -459,7 +459,7 @@ def store(args: argparse.NameSpace) -> None:
     db.close()
 
 
-def info(args: argparse.NameSpace) -> None:
+def info(args: argparse.Namespace) -> None:
     """ Display information about png files
         and chunks if option specified."""
     if args.chunks:
@@ -476,7 +476,7 @@ def info(args: argparse.NameSpace) -> None:
             print_info(png_file.name, IHDR_info)
 
 
-def view(args: argparse.NameSpace) -> None:
+def view(args: argparse.Namespace) -> None:
     """ View image with user specified path if given,
         else a random image from db.db.
     """
