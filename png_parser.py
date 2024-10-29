@@ -92,6 +92,7 @@ def read_chunk(png_file) -> dict:
 
     chunk_type_bytes = png_file.read(4)
     chunk_type = chunk_type_bytes.decode('ascii')
+
     # the fifth bit of each byte in the chunk type is a flag
     is_ancillary = (int.from_bytes(chunk_type_bytes[0:1]) & 32) >> 5
     is_private = (int.from_bytes(chunk_type_bytes[1:2]) & 32) >> 5
@@ -103,6 +104,7 @@ def read_chunk(png_file) -> dict:
     chunk_crc = int.from_bytes(png_file.read(4))
     actual_crc = zlib.crc32(chunk_type_bytes + chunk_data)
     assert actual_crc == chunk_crc, "failed chunk checksum"
+
     return {"chunk_length": chunk_length,
             "chunk_type": chunk_type,
             "is_ancillary": is_ancillary,
@@ -416,7 +418,7 @@ def print_chunks(file_name: str, chunks: list[dict]) -> None:
         print(chunk_str, end="")
         if (i+1) % 7 == 0:
             print()
-    print()
+    print("\n")
 
 
 def start_database():
@@ -427,67 +429,65 @@ def start_database():
         return db
 
 
-def main():
+# Command line options:
+def store(args):
+    db = start_database()
+    if not db:
+        sys.exit(1)
 
-    # here we define what happens
-    # for the different positional arguments
-    def store(args):
+    for png_file in args.png_files:
+        IHDR_info, _, _, _, all_chunks = read_png_file(png_file.name)
+        print(f"Inserting {png_file.name} data into db.db...")
+        png_info_insert_success = db.insert_png_info(png_file.name,
+                                                     IHDR_info)
+        if png_info_insert_success:
+            for chunk in all_chunks:
+                chunk_insert_success = db.insert_chunk(chunk)
+                if not chunk_insert_success:
+                    break
+            if chunk_insert_success:
+                print("Saving changes...")
+                db.save_changes()
+                print("Done!\n")
+        if not (png_info_insert_success and chunk_insert_success):
+            print("Changes not saved.\n")
+    db.close()
+
+
+def info(args):
+    if args.chunks:
+        for png_file in args.png_files:
+            IHDR_info, _, _, _, all_chunks = read_png_file(png_file.name)
+            print(80*"=")
+            print_info(png_file.name, IHDR_info)
+            print(80*"-")
+            print_chunks(png_file.name, all_chunks)
+    else:
+        for png_file in args.png_files:
+            IHDR_info, _, _, _, _ = read_png_file(png_file.name)
+            print(80*"=")
+            print_info(png_file.name, IHDR_info)
+
+
+def view(args):
+    if args.png_file == 'random':
         db = start_database()
         if not db:
             sys.exit(1)
-
-        for png_file in args.png_files:
-            IHDR_info, _, _, _, all_chunks = read_png_file(png_file.name)
-            print(f"Inserting {png_file.name} data into db.db...")
-            png_info_insert_success = db.insert_png_info(png_file.name,
-                                                         IHDR_info)
-            if png_info_insert_success:
-                for chunk in all_chunks:
-                    chunk_insert_success = db.insert_chunk(chunk)
-                    if not chunk_insert_success:
-                        break
-                if chunk_insert_success:
-                    print("Saving changes...")
-                    db.save_changes()
-                    print("Done!\n")
-            if not (png_info_insert_success and chunk_insert_success):
-                print("Changes not saved.")
+        print("Opening random image from db.db...")
+        IHDR_info, PLTE_chunk, IDAT_data = db.get_random_png_file()
         db.close()
+        if not any((IHDR_info, PLTE_chunk, IDAT_data)):
+            print("Database is empty.")
+            sys.exit(1)
+    else:
+        IHDR_info, PLTE_chunk, IDAT_data, _, _ = read_png_file(args.png_file)
+    decomped_IDAT_data = zlib.decompress(IDAT_data)
+    image = decode_image_data(IHDR_info, decomped_IDAT_data, PLTE_chunk)
+    show_image(image, IHDR_info["color_type"], IHDR_info["bit_depth"])
 
-    def info(args):
-        if args.chunks:
-            for png_file in args.png_files:
-                IHDR_info, _, _, _, all_chunks = read_png_file(png_file.name)
-                print(80*"=")
-                print_info(png_file.name, IHDR_info)
-                print(80*"-")
-                print_chunks(png_file.name, all_chunks)
-        else:
-            for png_file in args.png_files:
-                IHDR_info, _, _, _, _ = read_png_file(png_file.name)
-                print(80*"=")
-                print_info(png_file.name, IHDR_info)
 
-    def view(args):
-        if args.png_file == 'random':
-            db = start_database()
-            if not db:
-                sys.exit(1)
-            print("Opening random image from db.db...")
-            IHDR_info, PLTE_chunk, IDAT_data = db.get_random_png_file()
-            db.close()
-            if not any((IHDR_info, PLTE_chunk, IDAT_data)):
-                print("Error retrieving image from db.db.")
-                print((
-                    "If the database is empty, "
-                    "you can store images using the store argument."
-                ))
-        else:
-            IHDR_info, PLTE_chunk, IDAT_data, _, _ = read_png_file(args.png_file)
-        decomped_IDAT_data = zlib.decompress(IDAT_data)
-        image = decode_image_data(IHDR_info, decomped_IDAT_data, PLTE_chunk)
-        show_image(image, IHDR_info["color_type"], IHDR_info["bit_depth"])
-
+def main():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
     store_parser = subparsers.add_parser('store',
@@ -526,8 +526,12 @@ def main():
                              default='random'
                              )
     args = parser.parse_args()
-    args.func(args)
+    try:
+        args.func(args)
+    except AttributeError:
+        parser.print_usage()
+        sys.exit(1)
 
-    
+
 if __name__ == '__main__':
     main()
