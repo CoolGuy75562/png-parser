@@ -14,6 +14,7 @@
 import argparse
 import zlib
 import sys
+from typing import BinaryIO
 import matplotlib.pyplot as plt
 import numpy as np
 import database  # database.py
@@ -43,23 +44,23 @@ interlace_method_str = {0: "(no interlace)",
 
 
 # these are used in decoding scanlines of uncompressed IDAT data
-def none_filter(x, a, b, c):
+def none_filter(x: int, a: int, b: int, c: int) -> int:
     return x
 
 
-def prior_filter(x, a, b, c):
+def prior_filter(x: int, a: int, b: int, c: int) -> int:
     return (x + a) % 256
 
 
-def up_filter(x, a, b, c):
+def up_filter(x: int, a: int, b: int, c: int) -> int:
     return (x + b) % 256
 
 
-def average_filter(x, a, b, c):
+def average_filter(x: int, a: int, b: int, c: int) -> int:
     return (x + (a + b)//2) % 256
 
 
-def paeth_filter(x, a, b, c):
+def paeth_filter(x: int, a: int, b: int, c: int) -> int:
     p = a + b - c
     pa = abs(p-a)
     pb = abs(p-b)
@@ -81,11 +82,11 @@ undo_filter = (none_filter,
                )
 
 
-def ceil_div(a, b):
+def ceil_div(a: int, b: int) -> int:
     return -(a // -b)
 
 
-def read_chunk(png_file) -> dict:
+def read_chunk(png_file: BinaryIO) -> dict:
     """ Read next chunk from file object pointing to the start of a chunk. """
     chunk_length_bytes = png_file.read(4)
     chunk_length = int.from_bytes(chunk_length_bytes)
@@ -357,7 +358,10 @@ def decode_image_data(IHDR_info: dict,
     return image
 
 
-def show_image(image, color_type, bit_depth):
+def show_image(image: list[list[float]] | list[list[list[float]]],
+               color_type: int,
+               bit_depth: int
+               ) -> None:
     """ Displays image in matplotlib plot. """
     fig = plt.figure()
     ax = fig.add_subplot(111)
@@ -421,7 +425,7 @@ def print_chunks(file_name: str, chunks: list[dict]) -> None:
     print("\n")
 
 
-def start_database():
+def start_database() -> database.Database | type(None):
     db = database.Database()
     if not db.connect():
         return None
@@ -430,7 +434,8 @@ def start_database():
 
 
 # Command line options:
-def store(args):
+def store(args: argparse.NameSpace) -> None:
+    """ Store information about each png file in list in a database. """
     db = start_database()
     if not db:
         sys.exit(1)
@@ -454,7 +459,9 @@ def store(args):
     db.close()
 
 
-def info(args):
+def info(args: argparse.NameSpace) -> None:
+    """ Display information about png files
+        and chunks if option specified."""
     if args.chunks:
         for png_file in args.png_files:
             IHDR_info, _, _, _, all_chunks = read_png_file(png_file.name)
@@ -469,7 +476,10 @@ def info(args):
             print_info(png_file.name, IHDR_info)
 
 
-def view(args):
+def view(args: argparse.NameSpace) -> None:
+    """ View image with user specified path if given,
+        else a random image from db.db.
+    """
     if args.png_file == 'random':
         db = start_database()
         if not db:
@@ -487,7 +497,7 @@ def view(args):
     show_image(image, IHDR_info["color_type"], IHDR_info["bit_depth"])
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
     store_parser = subparsers.add_parser('store',
