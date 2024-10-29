@@ -19,50 +19,50 @@ TABLE = {}
 
 # idat data + absolute file path and datetime added
 TABLE["png_info"] = ("""CREATE TABLE IF NOT EXISTS png_info(
-                     png_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                     file_path TEXT UNIQUE NOT NULL,
-                     datetime_added_utc TEXT NOT NULL,
-                     width INTEGER NOT NULL,
-                     height INTEGER NOT NULL,
-                     bit_depth INTEGER NOT NULL,
-                     color_type INTEGER NOT NULL,
-                     compression_method INTEGER NOT NULL,
-                     filter_method INTEGER NOT NULL,
-                     interlace_method INTEGER NOT NULL)""")
+                            png_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            file_path TEXT UNIQUE NOT NULL,
+                            datetime_added_utc TEXT NOT NULL,
+                            width INTEGER NOT NULL,
+                            height INTEGER NOT NULL,
+                            bit_depth INTEGER NOT NULL,
+                            color_type INTEGER NOT NULL,
+                            compression_method INTEGER NOT NULL,
+                            filter_method INTEGER NOT NULL,
+                            interlace_method INTEGER NOT NULL)""")
 
 # everything returned by png_parser.read_chunk minus chunk data
 TABLE["chunk_info"] = ("""CREATE TABLE IF NOT EXISTS chunk_info(
-                       chunk_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                       png_id INTEGER NOT NULL,
-                       chunk_length INTEGER NOT NULL,
-                       chunk_type TEXT NOT NULL,
-                       is_ancillary INTEGER NOT NULL,
-                       is_private INTEGER NOT NULL,
-                       is_reserved INTEGER NOT NULL,
-                       is_safe_to_copy INTEGER NOT NULL,
-                       chunk_crc INTEGER NOT NULL,
-                       FOREIGN KEY (png_id)
-                       REFERENCES png_info(png_id))""")
+                              chunk_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              png_id INTEGER NOT NULL,
+                              chunk_length INTEGER NOT NULL,
+                              chunk_type TEXT NOT NULL,
+                              is_ancillary INTEGER NOT NULL,
+                              is_private INTEGER NOT NULL,
+                              is_reserved INTEGER NOT NULL,
+                              is_safe_to_copy INTEGER NOT NULL,
+                              chunk_crc INTEGER NOT NULL,
+                          FOREIGN KEY (png_id)
+                          REFERENCES png_info(png_id))""")
 
 # idat chunk data takes up the most space so it gets its own table
 TABLE["idat_chunk_data"] = ("""CREATE TABLE IF NOT EXISTS idat_chunk_data(
-                            chunk_id INTEGER PRIMARY KEY,
-                            png_id INTEGER NOT NULL,
-                            chunk_data BLOB NOT NULL,
-                            FOREIGN KEY (chunk_id)
-                            REFERENCES chunk_info (chunk_id),
-                            FOREIGN KEY (png_id)
-                            REFERENCES png_info (png_id))""")
+                                   chunk_id INTEGER PRIMARY KEY,
+                                   png_id INTEGER NOT NULL,
+                                   chunk_data BLOB NOT NULL,
+                               FOREIGN KEY (chunk_id)
+                               REFERENCES chunk_info (chunk_id),
+                               FOREIGN KEY (png_id)
+                               REFERENCES png_info (png_id))""")
 
 # other chunk data is too large to go in chunk_info table so gets own table
 TABLE["other_chunk_data"] = ("""CREATE TABLE IF NOT EXISTS other_chunk_data(
-                             chunk_id INTEGER PRIMARY KEY,
-                             png_id INTEGER NOT NULL,
-                             chunk_data BLOB NOT NULL,
-                             FOREIGN KEY (chunk_id)
-                             REFERENCES chunk_info (chunk_id),
-                             FOREIGN KEY (png_id)
-                             REFERENCES png_info (png_id))""")
+                                    chunk_id INTEGER PRIMARY KEY,
+                                    png_id INTEGER NOT NULL,
+                                    chunk_data BLOB NOT NULL,
+                                FOREIGN KEY (chunk_id)
+                                REFERENCES chunk_info (chunk_id),
+                                FOREIGN KEY (png_id)
+                                REFERENCES png_info (png_id))""")
 
 
 class Database:
