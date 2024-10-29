@@ -97,6 +97,41 @@ Chunks contained in color_index_test.png:
 
 ```
 
-The view argument displays the image in a window:
+We can view the image using the view argument:
+
+```bash
+python3 png_parser.py view color_index_test.png
+```
 
 ![view_option](https://github.com/user-attachments/assets/5345f877-7865-4f72-9d35-42cc49b4ae84)
+
+This screenshot is a png image, so we can look at its information too:
+
+```bash
+python3 png_parser.py info -c screenshot.png
+================================================================================
+IHDR information for screenshot.png:
+
+width: 680
+height: 595
+bit depth: 8
+color type: 6 (rgb alpha)
+compression method: 0 (DEFLATE)
+filter method: 0
+interlace method: 0 (no interlace)
+
+--------------------------------------------------------------------------------
+Chunks contained in screenshot.png:
+
+    0: IHDR    1: pHYs    2: IDAT    3: IDAT    4: IDAT    5: IDAT    6: IDAT
+    7: IDAT    8: IDAT    9: IDAT   10: IDAT   11: IDAT   12: IEND
+
+```
+
+And we can view the image using the view argument:
+
+```bash
+python3 png_parser.py view screenshot.png
+```
+
+![screenshot_screenshot](https://github.com/user-attachments/assets/2e5a7a3a-4ace-44d6-9417-45ecee6e5a56)
