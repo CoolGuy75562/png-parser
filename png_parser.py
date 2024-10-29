@@ -31,14 +31,14 @@ BIT_DEPTHS = {0: [1, 2, 4, 8, 16],
               6: [8, 16]
               }
 
-color_type_str = {0: "(grayscale)",
+COLOR_TYPE_STR = {0: "(grayscale)",
                   2: "(rgb)",
                   3: "(indexed color)",
                   4: "(grayscale alpha)",
                   6: "(rgb alpha)"
                   }
-compression_method_str = {0: "(DEFLATE)"}
-interlace_method_str = {0: "(no interlace)",
+COMPRESSION_METHOD_STR = {0: "(DEFLATE)"}
+INTERLACE_METHOD_STR = {0: "(no interlace)",
                         1: "(Adam7 interlace)"
                         }
 
@@ -398,16 +398,16 @@ def print_info(file_name: str, IHDR_info: dict) -> None:
     print(f"bit depth: {IHDR_info['bit_depth']}")
     print((
         f"color type: {IHDR_info['color_type']} "
-        f"{color_type_str[IHDR_info['color_type']]}"
+        f"{COLOR_TYPE_STR[IHDR_info['color_type']]}"
     ))
     print((
         f"compression method: {IHDR_info['compression_method']} "
-        f"{compression_method_str[IHDR_info['compression_method']]}"
+        f"{COMPRESSION_METHOD_STR[IHDR_info['compression_method']]}"
     ))
     print(f"filter method: {IHDR_info['filter_method']}")
     print((
         f"interlace method: {IHDR_info['interlace_method']} "
-        f"{interlace_method_str[IHDR_info['interlace_method']]}\n"
+        f"{INTERLACE_METHOD_STR[IHDR_info['interlace_method']]}\n"
     ))
 
 
