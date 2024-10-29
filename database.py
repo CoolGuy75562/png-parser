@@ -13,7 +13,6 @@
 #     GNU General Public License for more details.
 
 import sqlite3
-import typing
 from os import path
 
 TABLE = {}
@@ -55,7 +54,7 @@ TABLE["idat_chunk_data"] = ("""CREATE TABLE IF NOT EXISTS idat_chunk_data(
                             FOREIGN KEY (png_id)
                             REFERENCES png_info (png_id))""")
 
-# other chunk data is still too large to go in chunk_info table so gets own table
+# other chunk data is too large to go in chunk_info table so gets own table
 TABLE["other_chunk_data"] = ("""CREATE TABLE IF NOT EXISTS other_chunk_data(
                              chunk_id INTEGER PRIMARY KEY,
                              png_id INTEGER NOT NULL,
@@ -65,14 +64,15 @@ TABLE["other_chunk_data"] = ("""CREATE TABLE IF NOT EXISTS other_chunk_data(
                              FOREIGN KEY (png_id)
                              REFERENCES png_info (png_id))""")
 
+
 class Database:
     def __init__(self):
         self.con = None
         self.cur = None
-        # we keep track of these for populating tables where they are foreign keys
+        # we keep track of these for populating tables
         self.curr_png_id = None
         self.curr_chunk_id = None
-        
+
     def connect(self):
         try:
             self.con = sqlite3.connect("db.db")
@@ -98,8 +98,26 @@ class Database:
         assert all(key in IHDR_info.keys() for key in IHDR_info_keys)
         IHDR_info["file_path"] = path.abspath(file_path)
         try:
-            self.cur.execute("""INSERT INTO png_info (file_path,datetime_added_utc,width,height,bit_depth,color_type,compression_method,filter_method,interlace_method)
-                                VALUES (:file_path, datetime('now'), :width, :height, :bit_depth, :color_type, :compression_method, :filter_method, :interlace_method)
+            self.cur.execute("""INSERT INTO png_info(
+                                    file_path,
+                                    datetime_added_utc,
+                                    width,
+                                    height,
+                                    bit_depth,
+                                    color_type,
+                                    compression_method,
+                                    filter_method,
+                                    interlace_method)
+                                VALUES (
+                                    :file_path,
+                                    datetime('now'),
+                                    :width,
+                                    :height,
+                                    :bit_depth,
+                                    :color_type,
+                                    :compression_method,
+                                    :filter_method,
+                                    :interlace_method)
                                 RETURNING png_id""",
                              IHDR_info
                              )
@@ -112,20 +130,40 @@ class Database:
     def insert_chunk(self, chunk):
         chunk_data = chunk["chunk_data"]
         chunk_info = chunk
-        assert self.curr_png_id is not None, "png_info must be populated before chunk tables"
+        assert self.curr_png_id is not None, \
+            "png_info must be populated before chunk tables"
         # bit janky
-        if not self._insert_chunk_info(chunk_info): return False
+        if not self._insert_chunk_info(chunk_info):
+            return False
         if chunk_info["chunk_type"] == "IDAT":
-            if not self._insert_idat_chunk_data(chunk_data): return False
+            if not self._insert_idat_chunk_data(chunk_data):
+                return False
         else:
-            if not self._insert_other_chunk_data(chunk_data): return False
+            if not self._insert_other_chunk_data(chunk_data):
+                return False
         return True
-    
+
     def _insert_chunk_info(self, chunk_info):
         chunk_info["png_id"] = self.curr_png_id
         try:
-            self.cur.execute("""INSERT INTO chunk_info(png_id, chunk_length, chunk_type, is_ancillary, is_private, is_reserved, is_safe_to_copy, chunk_crc)
-                                VALUES(:png_id, :chunk_length, :chunk_type, :is_ancillary, :is_private, :is_reserved, :is_safe_to_copy, :chunk_crc)
+            self.cur.execute("""INSERT INTO chunk_info(
+                                    png_id,
+                                    chunk_length,
+                                    chunk_type,
+                                    is_ancillary,
+                                    is_private,
+                                    is_reserved,
+                                    is_safe_to_copy,
+                                    chunk_crc)
+                                VALUES(
+                                    :png_id,
+                                    :chunk_length,
+                                    :chunk_type,
+                                    :is_ancillary,
+                                    :is_private,
+                                    :is_reserved,
+                                    :is_safe_to_copy,
+                                    :chunk_crc)
                                 RETURNING chunk_id""",
                              chunk_info
                              )
@@ -137,7 +175,10 @@ class Database:
 
     def _insert_idat_chunk_data(self, chunk_data):
         try:
-            self.cur.execute("""INSERT INTO idat_chunk_data(chunk_id, png_id, chunk_data)
+            self.cur.execute("""INSERT INTO idat_chunk_data(
+                                    chunk_id,
+                                    png_id,
+                                    chunk_data)
                                 VALUES(?, ?, ?)""",
                              (self.curr_chunk_id, self.curr_png_id, chunk_data)
                              )
@@ -148,7 +189,10 @@ class Database:
         
     def _insert_other_chunk_data(self, chunk_data):
         try:
-            self.cur.execute("""INSERT INTO other_chunk_data(chunk_id, png_id, chunk_data)
+            self.cur.execute("""INSERT INTO other_chunk_data(
+                                    chunk_id,
+                                    png_id,
+                                    chunk_data)
                                 VALUES(?, ?, ?)""",
                              (self.curr_chunk_id, self.curr_png_id, chunk_data)
                              )
@@ -161,7 +205,8 @@ class Database:
         """ Chooses a random png file from png_info, and returns the chunks
         and information needed to decode and plot the image. """
         try:
-            self.cur.execute("SELECT png_id FROM png_info ORDER BY RANDOM() LIMIT 1")
+            self.cur.execute("""SELECT png_id FROM png_info
+                                ORDER BY RANDOM() LIMIT 1""")
             random_id = self.cur.fetchone()
             if random_id is None:
                 return None, None, None
@@ -179,16 +224,19 @@ class Database:
                              )
             data = self.cur.fetchone()
             # can make this nicer by making row factory give a dict
-            file_path = data[0]
             IHDR_info = {}
-            IHDR_info["width"], IHDR_info["height"], IHDR_info["bit_depth"], IHDR_info["color_type"] = data["width"], data["height"], data["bit_depth"], data["color_type"]
-            
+            IHDR_info["width"] = data["width"]
+            IHDR_info["height"] = data["height"]
+            IHDR_info["bit_depth"] = data["bit_depth"]
+            IHDR_info["color_type"] = data["color_type"]
+
             self.cur.execute("""SELECT
-                                chunk_type,
-                                chunk_length,
-                                other_chunk_data.chunk_data
+                                    chunk_type,
+                                    chunk_length,
+                                    other_chunk_data.chunk_data
                                 FROM chunk_info
-                                JOIN other_chunk_data ON chunk_info.chunk_id = other_chunk_data.chunk_id
+                                JOIN other_chunk_data
+                                    ON chunk_info.chunk_id = other_chunk_data.chunk_id
                                 WHERE chunk_info.png_id = ?""", [random_id])
             other_chunks = self.cur.fetchall()
             PLTE_chunk = None
@@ -200,22 +248,23 @@ class Database:
                     PLTE_chunk["chunk_length"] = chunk["chunk_length"]
                     break
             self.cur.execute("""SELECT
-                                chunk_type,
-                                idat_chunk_data.chunk_data
+                                    chunk_type,
+                                    idat_chunk_data.chunk_data
                                 FROM chunk_info
-                                JOIN idat_chunk_data ON chunk_info.chunk_id = idat_chunk_data.chunk_id
+                                JOIN idat_chunk_data
+                                    ON chunk_info.chunk_id = idat_chunk_data.chunk_id
                                 WHERE chunk_info.png_id = ?""", [random_id])
             IDAT_chunks = self.cur.fetchall()
             IDAT_data = b''.join([data["chunk_data"] for data in IDAT_chunks])
             return IHDR_info, PLTE_chunk, IDAT_data
-        
+
         except sqlite3.Error as e:
             print(f"Error getting random png file:\n{e}")
             return None, None, None
 
     def save_changes(self):
         self.con.commit()
-        
+
     def close(self):
         self.cur.close()
         self.con.close()
