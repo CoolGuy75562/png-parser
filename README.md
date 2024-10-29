@@ -46,6 +46,7 @@ options:
 ```
 
 The info option prints information about a list of png files, such as color type and bit depth. Optionally, it can also print a list of all chunks in each png file in the order they appear.
+
 ```bash
 usage: png_parser.py info [-h] [-c] [png_files ...]
 
@@ -68,3 +69,34 @@ options:
   -h, --help  show this help message and exit
 ```
 
+## Example
+
+Consider this parrot png:
+
+![color_index_test](https://github.com/user-attachments/assets/27583125-16ba-4f29-bfa1-5b2d892e1e8c)
+
+The info argument, along with the -c option, gives us the following output: 
+
+```bash
+python3 png_parser.py info -c color_index_test.png 
+================================================================================
+IHDR information for color_index_test.png:
+
+width: 150
+height: 200
+bit depth: 8
+color type: 3 (indexed color)
+compression method: 0 (DEFLATE)
+filter method: 0
+interlace method: 0 (no interlace)
+
+--------------------------------------------------------------------------------
+Chunks contained in color_index_test.png:
+
+    0: IHDR    1: PLTE    2: IDAT    3: IEND
+
+```
+
+The view argument displays the image in a window:
+
+![view_option](https://github.com/user-attachments/assets/5345f877-7865-4f72-9d35-42cc49b4ae84)
