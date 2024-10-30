@@ -213,11 +213,11 @@ class Database:
             else:
                 random_id = random_id[0]
             self.cur.execute("""SELECT
-                                file_path,
-                                width,
-                                height,
-                                bit_depth,
-                                color_type
+                                    file_path,
+                                    width,
+                                    height,
+                                    bit_depth,
+                                    color_type
                                 FROM png_info
                                 WHERE png_id = ?""",
                              [random_id]
