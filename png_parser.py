@@ -131,8 +131,6 @@ def parse_IHDR_data(IHDR_data: bytes) -> dict:
         "compression method must be 0"
     assert interlace_method in INTERLACE_METHODS, \
         "interlace method must be 0 or 1"
-    assert interlace_method == 0, \
-        "interlaced images not supported"
     assert color_type in COLOR_TYPES, \
         f"color type must be one of {COLOR_TYPES}"
     assert bit_depth in BIT_DEPTHS[color_type], (
@@ -492,6 +490,9 @@ def view(args: argparse.Namespace) -> None:
             sys.exit(1)
     else:
         IHDR_info, PLTE_chunk, IDAT_data, _, _ = read_png_file(args.png_file)
+    if IHDR_info["interlace_method"]: 
+        print("Viewing interlaced images is not currently supported.")
+        sys.exit(1)
     decomped_IDAT_data = zlib.decompress(IDAT_data)
     image = decode_image_data(IHDR_info, decomped_IDAT_data, PLTE_chunk)
     show_image(image, IHDR_info["color_type"], IHDR_info["bit_depth"])
