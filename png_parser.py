@@ -135,7 +135,7 @@ def parse_IHDR_data(IHDR_data: bytes) -> dict:
         f"color type must be one of {COLOR_TYPES}"
     assert bit_depth in BIT_DEPTHS[color_type], (
         f"bit depth for color type {color_type} "
-        "must be one of {BIT_DEPTHS[color_type]}")
+        "must be one of {BIT_DEPTHS['color_type']}")
     return {"width": width,
             "height": height,
             "bit_depth": bit_depth,
@@ -259,8 +259,9 @@ def decode_image_data(IHDR_info: dict,
                 gs_image_row.append(pixel)
         # if scanline length odd:
         for i in range((scanline_length-1) % 2):
-            last_byte = int.from_bytes(image_row[scanline_length-2:
-                                                 scanline_length-1])
+            last_byte = int.from_bytes(
+                image_row[scanline_length-2:scanline_length-1]
+            )
             for j in range(1, 8//bit_depth + 1):
                 bits_to_shift = 8-j*bit_depth
                 pixel = (last_byte >> bits_to_shift) & (2**(bit_depth)-1)
@@ -271,15 +272,13 @@ def decode_image_data(IHDR_info: dict,
         rgb_image_row = []
         for i in range((scanline_length-1)//bpp):
             pixel_bytes = image_row[bpp*i:bpp*(i+1)]
-            red = (int.from_bytes(pixel_bytes[0:bytes_per_sample])
-                   / (2**bit_depth))
-            green = (int.from_bytes(pixel_bytes[bytes_per_sample:
-                                                2*bytes_per_sample])
-                     / (2**bit_depth))
-
-            blue = (int.from_bytes(pixel_bytes[2*bytes_per_sample:
-                                               3*bytes_per_sample])
-                    / (2**bit_depth))
+            red = int.from_bytes(pixel_bytes[0:bytes_per_sample])
+            green = int.from_bytes(
+                pixel_bytes[bytes_per_sample:2*bytes_per_sample]
+            )
+            blue = int.from_bytes(
+                pixel_bytes[2*bytes_per_sample:3*bytes_per_sample]
+            )
             rgb_image_row.append([red, green, blue])
         return rgb_image_row
 
@@ -297,11 +296,10 @@ def decode_image_data(IHDR_info: dict,
         gsa_image_row = []
         for i in range((scanline_length-1)//bpp):
             pixel_bytes = image_row[bpp*i:bpp*(i+1)]
-            gs_sample = (int.from_bytes(pixel_bytes[0:bytes_per_sample])
-                         / (2**bit_depth))
-            alpha = (int.from_bytes(pixel_bytes[bytes_per_sample:
-                                                2*bytes_per_sample])
-                     / (2**bit_depth))
+            gs_sample = int.from_bytes(pixel_bytes[0:bytes_per_sample])
+            alpha = int.from_bytes(
+                pixel_bytes[bytes_per_sample:2*bytes_per_sample]
+            )
             gsa_image_row.append([gs_sample, alpha])
         return gsa_image_row
 
@@ -309,19 +307,17 @@ def decode_image_data(IHDR_info: dict,
         rgba_image_row = []
         for i in range((scanline_length-1)//bpp):
             pixel_bytes = image_row[bpp*i:bpp*(i+1)]
-            red = (int.from_bytes(pixel_bytes[0:bytes_per_sample])
-                   / (2**bit_depth))
-            green = (int.from_bytes(pixel_bytes[bytes_per_sample:
-                                                2*bytes_per_sample])
-                     / (2**bit_depth))
-            blue = (int.from_bytes(pixel_bytes[2*bytes_per_sample:
-                                               3*bytes_per_sample])
-                    / (2**bit_depth))
-            alpha = (int.from_bytes(pixel_bytes[3*bytes_per_sample:
-                                                4*bytes_per_sample])
-                     / (2**bit_depth))
+            red = int.from_bytes(pixel_bytes[0:bytes_per_sample])
+            green = int.from_bytes(
+                pixel_bytes[bytes_per_sample:2*bytes_per_sample]
+            )
+            blue = int.from_bytes(
+                pixel_bytes[2*bytes_per_sample:3*bytes_per_sample]
+            )
+            alpha = int.from_bytes(
+                pixel_bytes[3*bytes_per_sample:4*bytes_per_sample]
+            )
             rgba_image_row.append([red, green, blue, alpha])
-
         return rgba_image_row
 
     row_to_pixels = {0: gs, 2: rgb, 3: ci, 4: gsa, 6: rgba}
@@ -361,6 +357,9 @@ def show_image(image: list[list[float]] | list[list[list[float]]],
                bit_depth: int
                ) -> None:
     """ Displays image in matplotlib plot. """
+    image = np.array(image)
+    if color_type in [2, 4, 6]:
+        image = np.divide(image, 2**bit_depth)
     fig = plt.figure()
     ax = fig.add_subplot(111)
 
@@ -372,7 +371,6 @@ def show_image(image: list[list[float]] | list[list[list[float]]],
                   vmin=0, vmax=2**bit_depth)
     # we have to turn grayscale with alpha into rgb to get imshow() to work
     elif color_type == 4:
-        image = np.array(image)
         gs = image[:, :, 0]
         alpha = image[:, :, 1]
         image = np.dstack((gs, gs, gs, alpha))
@@ -387,6 +385,47 @@ def show_image(image: list[list[float]] | list[list[list[float]]],
                   interpolation='none',
                   vmin=0, vmax=2**bit_depth)
     plt.show()
+
+
+def print_symbol_console(r, g, b, symbol):
+    print(f"\033[38;2;{r};{g};{b}m{symbol}\033[0m", end="")
+
+
+def show_image_console_rgb(image, width, color_type, bit_depth):
+
+    if color_type == 0:
+        if bit_depth < 8:
+            image = np.multiply(image, 2**(8-bit_depth))
+        image = np.dstack((image, image, image))
+
+    for row in image[:]:
+        for pixel in row:
+            r, g, b = pixel
+            print_symbol_console(r, g, b, '\u2588')
+        print()
+
+
+def show_image_console_rgba(image, width, color_type, bit_depth):
+
+    if color_type == 4:
+        image = np.array(image)
+        gs = image[:, :, 0]
+        alpha = image[:, :, 1]
+        image = np.dstack((gs, gs, gs, alpha))
+
+    alpha_map = {0: '\u2800',
+                 1: '\u2591',
+                 2: '\u2592',
+                 3: '\u2593',
+                 4: '\u2588'
+                 }
+
+    for row in image[:]:
+        for pixel in row:
+            r, g, b, a = pixel
+            a = (10*a)//512
+            print_symbol_console(r, g, b, alpha_map[a])
+        print()
 
 
 def print_info(file_name: str, IHDR_info: dict) -> None:
@@ -490,17 +529,37 @@ def view(args: argparse.Namespace) -> None:
             sys.exit(1)
     else:
         IHDR_info, PLTE_chunk, IDAT_data, _, _ = read_png_file(args.png_file)
-    if IHDR_info["interlace_method"]: 
-        print("Viewing interlaced images is not currently supported.")
+    if IHDR_info["interlace_method"]:
+        print("viewing interlaced images is not currently supported")
         sys.exit(1)
     decomped_IDAT_data = zlib.decompress(IDAT_data)
     image = decode_image_data(IHDR_info, decomped_IDAT_data, PLTE_chunk)
-    show_image(image, IHDR_info["color_type"], IHDR_info["bit_depth"])
+    if args.console:
+        if IHDR_info["width"] > 80:
+            print("option --console not supported for images wider than 80 pixels")
+            sys.exit(1)
+        if IHDR_info["bit_depth"] == 16:
+            print("option --console not supported for 16 bit color")
+            sys.exit(1)
+        show_image_console = {
+            0: show_image_console_rgb,
+            2: show_image_console_rgb,
+            3: show_image_console_rgb,
+            4: show_image_console_rgba,
+            6: show_image_console_rgba
+        }
+        show_image_console[IHDR_info["color_type"]](image,
+                                                    IHDR_info["width"],
+                                                    IHDR_info["color_type"],
+                                                    IHDR_info["bit_depth"])
+    else:
+        show_image(image, IHDR_info["color_type"], IHDR_info["bit_depth"])
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
+
     store_parser = subparsers.add_parser('store',
                                          help='store png files in database'
                                          )
@@ -510,6 +569,7 @@ def main() -> None:
                               type=argparse.FileType('rb'),
                               help='png files to be stored in database'
                               )
+
     info_parser = subparsers.add_parser('info',
                                         help=('view information '
                                               'about given png files')
@@ -525,10 +585,13 @@ def main() -> None:
                              type=argparse.FileType('rb'),
                              help='list of png files'
                              )
+
     view_parser = subparsers.add_parser('view',
                                         help=('view a random image stored '
                                               'in the database, or a png file '
-                                              'if specified')
+                                              'if specified. '
+                                              'viewing interlaced '
+                                              'images is not supported')
                                         )
     view_parser.set_defaults(func=view)
     view_parser.add_argument('png_file',
@@ -536,6 +599,14 @@ def main() -> None:
                              help='png file to view',
                              default='random'
                              )
+    view_parser.add_argument('-c', '--console',
+                             action='store_true',
+                             help=('print image to console. image width must be '
+                                   'less than 80 pixels, and bit depth must not be 16. '
+                                   'only 5 levels of transparency supported. '
+                                   'will not work if terminal does not support truecolor')
+                             )
+
     args = parser.parse_args()
     try:
         args.func(args)

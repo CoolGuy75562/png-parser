@@ -217,7 +217,8 @@ class Database:
                                     width,
                                     height,
                                     bit_depth,
-                                    color_type
+                                    color_type,
+                                    interlace_method
                                 FROM png_info
                                 WHERE png_id = ?""",
                              [random_id]
@@ -229,7 +230,7 @@ class Database:
             IHDR_info["height"] = data["height"]
             IHDR_info["bit_depth"] = data["bit_depth"]
             IHDR_info["color_type"] = data["color_type"]
-
+            IHDR_info["interlace_method"] = data["interlace_method"]
             self.cur.execute("""SELECT
                                     chunk_type,
                                     chunk_length,
