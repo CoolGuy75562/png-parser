@@ -135,7 +135,7 @@ def parse_IHDR_data(IHDR_data: bytes) -> dict:
         f"color type must be one of {COLOR_TYPES}"
     assert bit_depth in BIT_DEPTHS[color_type], (
         f"bit depth for color type {color_type} "
-        "must be one of {BIT_DEPTHS['color_type']}")
+        f"must be one of {BIT_DEPTHS['color_type']}")
     return {"width": width,
             "height": height,
             "bit_depth": bit_depth,
