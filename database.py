@@ -201,12 +201,24 @@ class Database:
             print(f"Error inserting data into table other_chunk_data:\n{e}")
             return False
 
-    def get_random_png_file(self):
+    def get_random_png_file(self, width_lim=None):
         """ Chooses a random png file from png_info, and returns the chunks
         and information needed to decode and plot the image. """
         try:
-            self.cur.execute("""SELECT png_id FROM png_info
-                                ORDER BY RANDOM() LIMIT 1""")
+            if width_lim:
+                self.cur.execute("""SELECT png_id
+                                    FROM png_info
+                                    WHERE NOT interlace_method = 1
+                                        AND width < ?
+                                        AND NOT bit_depth = 16
+                                    ORDER BY RANDOM() LIMIT 1""",
+                                 [width_lim]
+                                 )
+            else:
+                self.cur.execute("""SELECT png_id
+                                    FROM png_info
+                                    WHERE NOT interlace_method = 1
+                                    ORDER BY RANDOM() LIMIT 1""")
             random_id = self.cur.fetchone()
             if random_id is None:
                 return None, None, None

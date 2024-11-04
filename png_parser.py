@@ -541,10 +541,15 @@ def view(args: argparse.Namespace) -> None:
         if not db:
             sys.exit(1)
         print("Opening random image from db.db...")
-        IHDR_info, PLTE_chunk, IDAT_data = db.get_random_png_file()
+        if args.console:
+            IHDR_info, PLTE_chunk, IDAT_data = db.get_random_png_file(
+                width_lim=80
+            )
+        else:
+            IHDR_info, PLTE_chunk, IDAT_data = db.get_random_png_file()
         db.close()
         if not any((IHDR_info, PLTE_chunk, IDAT_data)):
-            print("Database is empty.")
+            print("Could not find valid non-interlaced image in db.db")
             sys.exit(1)
     else:
         IHDR_info, PLTE_chunk, IDAT_data, _, _ = read_png_file(args.png_file)
@@ -640,12 +645,14 @@ def main() -> None:
     args = parser.parse_args()
 
     # sanity checks
-    if args.database and args.png_files:
+    arguments_given = vars(args).keys()
+    
+    if 'database' in arguments_given and args.png_files:
         print("--database option requires no png_files")
         info_parser.print_usage()
         sys.exit(1)
 
-    if args.database and args.database < 1:
+    if 'database' in arguments_given and args.database < 1:
         print("--database option takes a positive nonzero integer. ")
         info_parser.print_usage()
         sys.exit(1)
