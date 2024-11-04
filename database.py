@@ -263,6 +263,48 @@ class Database:
             print(f"Error getting random png file:\n{e}")
             return None, None, None
 
+    def get_first_n_infos(self, n: int
+                          ) -> tuple[list[str], list[dict], list[dict]]:
+
+        try:
+            self.cur.execute("""SELECT
+                                    file_path,
+                                    width,
+                                    height,
+                                    bit_depth,
+                                    color_type,
+                                    compression_method,
+                                    filter_method,
+                                    interlace_method,
+                                    (SELECT GROUP_CONCAT(chunk_type)
+                                     FROM chunk_info
+                                     WHERE png_info.png_id = chunk_info.png_id
+                                    ) AS chunk_types
+                                FROM png_info
+                                LIMIT ?""", [n]
+                             )
+            data = self.cur.fetchall()
+            file_paths = [row["file_path"] for row in data]
+            # absolutely disgusting
+            # TODO: row factory
+            png_infos = [{"width": row["width"],
+                          "height": row["height"],
+                          "bit_depth": row["bit_depth"],
+                          "color_type": row["color_type"],
+                          "compression_method": row["compression_method"],
+                          "filter_method": row["filter_method"],
+                          "interlace_method": row["interlace_method"]
+                          }
+                         for row in data
+                         ]
+            png_chunkss = [row["chunk_types"].split(',') for row in data]
+
+            return file_paths, png_infos, png_chunkss
+
+        except sqlite3.Error as e:
+            print(e)
+            return None, None, None
+        
     def save_changes(self):
         self.con.commit()
 

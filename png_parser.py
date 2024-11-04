@@ -133,9 +133,8 @@ def parse_IHDR_data(IHDR_data: bytes) -> dict:
         "interlace method must be 0 or 1"
     assert color_type in COLOR_TYPES, \
         f"color type must be one of {COLOR_TYPES}"
-    assert bit_depth in BIT_DEPTHS[color_type], (
-        f"bit depth for color type {color_type} "
-        f"must be one of {BIT_DEPTHS['color_type']}")
+    assert bit_depth in BIT_DEPTHS[color_type], \
+        "wrong bit depth for color type"
     return {"width": width,
             "height": height,
             "bit_depth": bit_depth,
@@ -454,7 +453,7 @@ def print_chunks(file_name: str, chunks: list[dict]) -> None:
         chunk_str = "{num: >{width}}: {chunk_type}".format(
             num=i,
             width=5,
-            chunk_type=chunk["chunk_type"]
+            chunk_type=chunk
         )
         print(chunk_str, end="")
         if (i+1) % 7 == 0:
@@ -495,22 +494,42 @@ def store(args: argparse.Namespace) -> None:
             print("Changes not saved.\n")
     db.close()
 
-
 def info(args: argparse.Namespace) -> None:
     """ Display information about png files
         and chunks if option specified."""
-    if args.chunks:
-        for png_file in args.png_files:
-            IHDR_info, _, _, _, all_chunks = read_png_file(png_file.name)
-            print(80*"=")
-            print_info(png_file.name, IHDR_info)
-            print(80*"-")
-            print_chunks(png_file.name, all_chunks)
+
+    if args.database:
+        db = start_database()
+        if not db:
+            sys.exit(1)
+        png_files, IHDR_infos, all_chunkss = db.get_first_n_infos(args.database)
+        db.close()
+        if not any((png_files, IHDR_infos, all_chunkss)):
+            print("Perhaps the database is empty")
+            sys.exit(1)
     else:
-        for png_file in args.png_files:
-            IHDR_info, _, _, _, _ = read_png_file(png_file.name)
+        IHDR_infos, all_chunkss = [], []
+        png_files = [png_file.name for png_file in args.png_files]
+        for png_file in png_files:
+            IHDR_info, _, _, _, all_chunks = read_png_file(png_file)
+            all_chunks = [chunk["chunk_type"] for chunk in all_chunks]
+            IHDR_infos.append(IHDR_info)
+            all_chunkss.append(all_chunks)
+            
+    if args.chunks:
+        for png_file, IHDR_info, all_chunks in zip(
+                png_files,
+                IHDR_infos,
+                all_chunkss
+        ):
             print(80*"=")
-            print_info(png_file.name, IHDR_info)
+            print_info(png_file, IHDR_info)
+            print(80*"-")
+            print_chunks(png_file, all_chunks)
+    else:
+        for png_file, IHDR_info in zip(png_files, IHDR_infos):
+            print(80*"=")
+            print_info(png_file, IHDR_info)
 
 
 def view(args: argparse.Namespace) -> None:
@@ -536,7 +555,8 @@ def view(args: argparse.Namespace) -> None:
     image = decode_image_data(IHDR_info, decomped_IDAT_data, PLTE_chunk)
     if args.console:
         if IHDR_info["width"] > 80:
-            print("option --console not supported for images wider than 80 pixels")
+            print("option --console not supported"
+                  "for images wider than 80 pixels")
             sys.exit(1)
         if IHDR_info["bit_depth"] == 16:
             print("option --console not supported for 16 bit color")
@@ -583,9 +603,17 @@ def main() -> None:
     info_parser.add_argument('png_files',
                              nargs='*',
                              type=argparse.FileType('rb'),
-                             help='list of png files'
+                             help='list of png files',
+                             default=None
                              )
-
+    info_parser.add_argument('-d', '--database',
+                             nargs='?',
+                             const=10,
+                             type=int,
+                             help=('display info for top n images in database. '
+                                   '(default 10) '
+                                   )
+                             )
     view_parser = subparsers.add_parser('view',
                                         help=('view a random image stored '
                                               'in the database, or a png file '
@@ -601,13 +629,27 @@ def main() -> None:
                              )
     view_parser.add_argument('-c', '--console',
                              action='store_true',
-                             help=('print image to console. image width must be '
-                                   'less than 80 pixels, and bit depth must not be 16. '
+                             help=('print image to console. '
+                                   'image width must be less than 80 pixels, '
+                                   'and bit depth must not be 16. '
                                    'only 5 levels of transparency supported. '
-                                   'will not work if terminal does not support truecolor')
+                                   'will not work if terminal does not '
+                                   'support truecolor')
                              )
 
     args = parser.parse_args()
+
+    # sanity checks
+    if args.database and args.png_files:
+        print("--database option requires no png_files")
+        info_parser.print_usage()
+        sys.exit(1)
+
+    if args.database and args.database < 1:
+        print("--database option takes a positive nonzero integer. ")
+        info_parser.print_usage()
+        sys.exit(1)
+        
     try:
         args.func(args)
     except AttributeError:
