@@ -660,12 +660,14 @@ def main() -> None:
     # check that given options make sense
     arguments_given = vars(args).keys()
 
-    if 'database' in arguments_given and args.png_files:
+    # TODO: fix
+    if 'database' in arguments_given and args.database and args.png_files:
         print("--database option requires no png_files")
         info_parser.print_usage()
         sys.exit(1)
 
-    if 'database' in arguments_given and args.database < 1:
+    # TODO: fix
+    if 'database' in arguments_given and args.database and args.database < 1:
         print("--database option takes a positive nonzero integer. ")
         info_parser.print_usage()
         sys.exit(1)
