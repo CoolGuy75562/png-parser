@@ -494,6 +494,7 @@ def store(args: argparse.Namespace) -> None:
             print("Changes not saved.\n")
     db.close()
 
+
 def info(args: argparse.Namespace) -> None:
     """ Display information about png files
         and chunks if option specified."""
@@ -502,7 +503,9 @@ def info(args: argparse.Namespace) -> None:
         db = start_database()
         if not db:
             sys.exit(1)
-        png_files, IHDR_infos, all_chunkss = db.get_first_n_infos(args.database)
+        png_files, IHDR_infos, all_chunkss = db.get_first_n_infos(
+            args.database, args.type
+        )
         db.close()
         if not any((png_files, IHDR_infos, all_chunkss)):
             print("Perhaps the database is empty")
@@ -515,7 +518,7 @@ def info(args: argparse.Namespace) -> None:
             all_chunks = [chunk["chunk_type"] for chunk in all_chunks]
             IHDR_infos.append(IHDR_info)
             all_chunkss.append(all_chunks)
-            
+
     if args.chunks:
         for png_file, IHDR_info, all_chunks in zip(
                 png_files,
@@ -615,10 +618,20 @@ def main() -> None:
                              nargs='?',
                              const=10,
                              type=int,
-                             help=('display info for top n images in database. '
+                             help=('display info for first n '
+                                   'images in database. '
                                    '(default 10) '
                                    )
                              )
+    info_parser.add_argument('-t', '--type',
+                             type=int,
+                             choices=[0, 2, 3, 4, 6],
+                             help=('if --database given, '
+                                   'restrict to images of '
+                                   'specified color type '
+                                   )
+                             )
+
     view_parser = subparsers.add_parser('view',
                                         help=('view a random image stored '
                                               'in the database, or a png file '
@@ -644,9 +657,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # sanity checks
+    # check that given options make sense
     arguments_given = vars(args).keys()
-    
+
     if 'database' in arguments_given and args.png_files:
         print("--database option requires no png_files")
         info_parser.print_usage()
@@ -656,7 +669,7 @@ def main() -> None:
         print("--database option takes a positive nonzero integer. ")
         info_parser.print_usage()
         sys.exit(1)
-        
+
     try:
         args.func(args)
     except AttributeError:

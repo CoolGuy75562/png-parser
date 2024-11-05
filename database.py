@@ -1,5 +1,5 @@
-""" This module contains table definitions for the png database, and a wrapper class for
- inserting and accessing data from the png database."""
+""" This module contains table definitions for the png database,
+and a wrapper class for inserting and accessing data from the png database."""
 # Copyright (C) 2024  CoolGuy75562
 #
 #     This program is free software: you can redistribute it and/or modify
@@ -186,7 +186,7 @@ class Database:
         except sqlite3.Error as e:
             print(f"Error inserting data into table other_chunk_data:\n{e}")
             return False
-        
+
     def _insert_other_chunk_data(self, chunk_data):
         try:
             self.cur.execute("""INSERT INTO other_chunk_data(
@@ -249,7 +249,8 @@ class Database:
                                     other_chunk_data.chunk_data
                                 FROM chunk_info
                                 JOIN other_chunk_data
-                                    ON chunk_info.chunk_id = other_chunk_data.chunk_id
+                                    ON chunk_info.chunk_id =
+                                       other_chunk_data.chunk_id
                                 WHERE chunk_info.png_id = ?""", [random_id])
             other_chunks = self.cur.fetchall()
             PLTE_chunk = None
@@ -265,7 +266,8 @@ class Database:
                                     idat_chunk_data.chunk_data
                                 FROM chunk_info
                                 JOIN idat_chunk_data
-                                    ON chunk_info.chunk_id = idat_chunk_data.chunk_id
+                                    ON chunk_info.chunk_id =
+                                       idat_chunk_data.chunk_id
                                 WHERE chunk_info.png_id = ?""", [random_id])
             IDAT_chunks = self.cur.fetchall()
             IDAT_data = b''.join([data["chunk_data"] for data in IDAT_chunks])
@@ -275,26 +277,48 @@ class Database:
             print(f"Error getting random png file:\n{e}")
             return None, None, None
 
-    def get_first_n_infos(self, n: int
+    def get_first_n_infos(self, n: int, color_type=None
                           ) -> tuple[list[str], list[dict], list[dict]]:
 
         try:
-            self.cur.execute("""SELECT
-                                    file_path,
-                                    width,
-                                    height,
-                                    bit_depth,
-                                    color_type,
-                                    compression_method,
-                                    filter_method,
-                                    interlace_method,
-                                    (SELECT GROUP_CONCAT(chunk_type)
-                                     FROM chunk_info
-                                     WHERE png_info.png_id = chunk_info.png_id
-                                    ) AS chunk_types
-                                FROM png_info
-                                LIMIT ?""", [n]
-                             )
+            if not color_type:
+                self.cur.execute("""SELECT
+                                        file_path,
+                                        width,
+                                        height,
+                                        bit_depth,
+                                        color_type,
+                                        compression_method,
+                                        filter_method,
+                                        interlace_method,
+                                        (SELECT GROUP_CONCAT(chunk_type)
+                                         FROM chunk_info
+                                         WHERE png_info.png_id =
+                                               chunk_info.png_id
+                                        ) AS chunk_types
+                                    FROM png_info
+                                    LIMIT ?""", [n]
+                                 )
+            else:
+                self.cur.execute("""SELECT
+                                        file_path,
+                                        width,
+                                        height,
+                                        bit_depth,
+                                        color_type,
+                                        compression_method,
+                                        filter_method,
+                                        interlace_method,
+                                        (SELECT GROUP_CONCAT(chunk_type)
+                                         FROM chunk_info
+                                         WHERE png_info.png_id =
+                                               chunk_info.png_id
+                                        ) AS chunk_types
+                                    FROM png_info
+                                    WHERE color_type = ?
+                                    LIMIT ?""",
+                                 [color_type, n]
+                                 )
             data = self.cur.fetchall()
             file_paths = [row["file_path"] for row in data]
             # absolutely disgusting
@@ -316,7 +340,7 @@ class Database:
         except sqlite3.Error as e:
             print(e)
             return None, None, None
-        
+
     def save_changes(self):
         self.con.commit()
 
