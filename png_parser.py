@@ -498,17 +498,25 @@ def store(args: argparse.Namespace) -> None:
 def info(args: argparse.Namespace) -> None:
     """ Display information about png files
         and chunks if option specified."""
-
     if args.database:
+        filter_keys = ['bit_depth',
+                       'color_type',
+                       'interlace_method',
+                       'width',
+                       'height',
+                       'chunk_name'
+                       ]
+        info_filter = {k: v for k, v in vars(args).items()
+                       if (k in filter_keys) and v}
         db = start_database()
         if not db:
             sys.exit(1)
         png_files, IHDR_infos, all_chunkss = db.get_first_n_infos(
-            args.database, args.type
+            args.database, **info_filter
         )
         db.close()
         if not any((png_files, IHDR_infos, all_chunkss)):
-            print("Perhaps the database is empty")
+            print("No images matching criteria found in database.")
             sys.exit(1)
     else:
         IHDR_infos, all_chunkss = [], []
@@ -623,12 +631,49 @@ def main() -> None:
                                    '(default 10) '
                                    )
                              )
-    info_parser.add_argument('-t', '--type',
+    info_parser.add_argument('--color-type',
                              type=int,
                              choices=[0, 2, 3, 4, 6],
                              help=('if --database given, '
                                    'restrict to images of '
                                    'specified color type '
+                                   )
+                             )
+    info_parser.add_argument('--bit-depth',
+                             type=int,
+                             choices=[1, 2, 4, 8, 16],
+                             help=('if --database given, '
+                                   'restrict to images of '
+                                   'specified bit depth '
+                                   )
+                             )
+    info_parser.add_argument('--interlace-method',
+                             type=int,
+                             choices=[0,1],
+                             help=('if --database given, '
+                                   'restrict to images of '
+                                   'specified interlace method '
+                                   )
+                             )
+    info_parser.add_argument('--width',
+                             type=int,
+                             help=('if --database given, '
+                                   'restrict to images less than '
+                                   'specified width '
+                                   )
+                             )
+    info_parser.add_argument('--height',
+                             type=int,
+                             help=('if --database given, '
+                                   'restrict to images less than '
+                                   'specified height '
+                                   )
+                             )
+    info_parser.add_argument('--chunk-name',
+                             type=str,
+                             help=('if --database given, '
+                                   'restrict to images containing '
+                                   'specified chunk '
                                    )
                              )
 
@@ -657,21 +702,25 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # check that given options make sense
+    # check that given options make sense:
     arguments_given = vars(args).keys()
 
-    # TODO: fix
+    # this can't be the best way to do it
     if 'database' in arguments_given and args.database and args.png_files:
         print("--database option requires no png_files")
         info_parser.print_usage()
         sys.exit(1)
 
-    # TODO: fix
     if 'database' in arguments_given and args.database and args.database < 1:
         print("--database option takes a positive nonzero integer. ")
         info_parser.print_usage()
         sys.exit(1)
 
+    if 'chunk_name' in arguments_given and args.chunk_name and len(args.chunk_name) != 4:
+        print('Argument to --chunk-name not valid. ')
+        info_parser.print_usage()
+        sys.exit(1)
+        
     try:
         args.func(args)
     except AttributeError:

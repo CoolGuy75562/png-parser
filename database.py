@@ -277,48 +277,50 @@ class Database:
             print(f"Error getting random png file:\n{e}")
             return None, None, None
 
-    def get_first_n_infos(self, n: int, color_type=None
+    def get_first_n_infos(self, n: int, **kwargs
                           ) -> tuple[list[str], list[dict], list[dict]]:
+        if kwargs:
+            # chunk name part temporary. silly to concat first
+            kw_conds = {'color_type': ' = :',
+                        'bit_depth': ' = :',
+                        'interlace_method': ' = :',
+                        'width': ' < :',
+                        'height': ' < :',
+                        'chunk_name': " chunk_types LIKE '%' || :chunk_name || '%' "
+                        }
+            query = (("SELECT file_path, width, height, bit_depth, "
+                      "color_type, compression_method, filter_method, "
+                      "interlace_method, "
+                      "(SELECT GROUP_CONCAT(chunk_type) FROM chunk_info "
+                      "WHERE png_info.png_id = chunk_info.png_id) "
+                      "AS chunk_types "
+                      "FROM png_info "
+                      "WHERE ")
+                     + ' AND '.join(kw + kw_conds[kw] + kw if kw != 'chunk_name'
+                                    else kw_conds[kw]
+                                    for kw in kwargs.keys()
+                                    )
+                     + " LIMIT :n")
+        else:
+            query = """SELECT
+                           file_path,
+                           width,
+                           height,
+                           bit_depth,
+                           color_type,
+                           compression_method,
+                           filter_method,
+                           interlace_method,
+                           (SELECT GROUP_CONCAT(chunk_type)
+                            FROM chunk_info
+                            WHERE png_info.png_id = chunk_info.png_id
+                           ) AS chunk_types
+                           FROM png_info
+                           LIMIT :n"""
+        kwargs['n'] = n;
 
         try:
-            if not color_type:
-                self.cur.execute("""SELECT
-                                        file_path,
-                                        width,
-                                        height,
-                                        bit_depth,
-                                        color_type,
-                                        compression_method,
-                                        filter_method,
-                                        interlace_method,
-                                        (SELECT GROUP_CONCAT(chunk_type)
-                                         FROM chunk_info
-                                         WHERE png_info.png_id =
-                                               chunk_info.png_id
-                                        ) AS chunk_types
-                                    FROM png_info
-                                    LIMIT ?""", [n]
-                                 )
-            else:
-                self.cur.execute("""SELECT
-                                        file_path,
-                                        width,
-                                        height,
-                                        bit_depth,
-                                        color_type,
-                                        compression_method,
-                                        filter_method,
-                                        interlace_method,
-                                        (SELECT GROUP_CONCAT(chunk_type)
-                                         FROM chunk_info
-                                         WHERE png_info.png_id =
-                                               chunk_info.png_id
-                                        ) AS chunk_types
-                                    FROM png_info
-                                    WHERE color_type = ?
-                                    LIMIT ?""",
-                                 [color_type, n]
-                                 )
+            self.cur.execute(query, kwargs)
             data = self.cur.fetchall()
             file_paths = [row["file_path"] for row in data]
             # absolutely disgusting
