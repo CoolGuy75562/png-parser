@@ -1,7 +1,7 @@
 # png-parser
-Utility to parse, decode, and view png files. The information about a png file can be either printed to the screen, or put into an sqlite database. 
+Utility to parse, decode, and view png files. The information about a png file can be either printed to the screen, or put into an sqlite database. One can list information about the images stored in the database, and can restrict the list to images matching some criteria, for example images of color type 3 which are less than 100 pixels wide and contain a tEXt chunk.
 
-The decoder supports all valid color types and bit depths, but does not support interlacing and does not make use of ancillary chunks. I wrote it only to understand how png decoding works, so it is slow for larger images.
+Using a built-in png decoder, one can view images in a matplotlib plot window, or in the console if the image is less than 80 pixels wide. The decoder supports all valid color types and bit depths, but does not support interlacing and does not make use of ancillary chunks. I wrote it only to understand how png decoding works, so it is slow for larger images.
 
 The decoder has been tested and gives correct output with this suite of test png files: http://www.schaik.com/pngsuite/pngsuite_bas_png.html
 
@@ -20,7 +20,7 @@ Complete details about the png format can be found here: http://www.libpng.org/p
    ```
 
 ## Usage
-Navigate to the appropriate directory and run python3 with one of the following positional arguments:
+There are three different "modes":
 ```bash
 usage: png_parser.py [-h] {store,info,view} ...
 
@@ -45,28 +45,44 @@ options:
   -h, --help  show this help message and exit
 ```
 
-The info option prints information about a list of png files, such as color type and bit depth. Optionally, it can also print a list of all chunks in each png file in the order they appear.
-
+The info option prints information about a list of png files, such as color type and bit depth. If instead the --database option is specified, one can get the information about files which have been stored in the database using the store argument. For the database option, one has several conditions by which one can filter the images that are listed.
 ```bash
-usage: png_parser.py info [-h] [-c] [png_files ...]
+usage: png_parser.py info [-h] [-c] [-d [DATABASE]] [--color-type {0,2,3,4,6}] [--bit-depth {1,2,4,8,16}] [--interlace-method {0,1}] [--width WIDTH] [--height HEIGHT]
+                          [--chunk-name CHUNK_NAME]
+                          [png_files ...]
 
 positional arguments:
-  png_files     list of png files
+  png_files             list of png files
 
 options:
-  -h, --help    show this help message and exit
-  -c, --chunks  for each png file print a list of its chunks in order of occurrence
+  -h, --help            show this help message and exit
+  -c, --chunks          for each png file print a list of its chunks in order of occurrence
+  -d [DATABASE], --database [DATABASE]
+                        display info for first n images in database. (default 10)
+  --color-type {0,2,3,4,6}
+                        if --database given, restrict to images of specified color type
+  --bit-depth {1,2,4,8,16}
+                        if --database given, restrict to images of specified bit depth
+  --interlace-method {0,1}
+                        if --database given, restrict to images of specified interlace method
+  --width WIDTH         if --database given, restrict to images less than specified width
+  --height HEIGHT       if --database given, restrict to images less than specified height
+  --chunk-name CHUNK_NAME
+                        if --database given, restrict to images containing specified chunk
 ```
 
-The view argument displays the specified png image in a matplotlib figure. If no file is specified, a random image from the database is selected and displayed instead. It can take a while to display the image if it is large.
+The view argument displays the specified png image in a matplotlib figure, or the console. If no file is specified, a random image from the database is selected and displayed instead. It can take a while to display the image if it is large.
 ```bash
-usage: png_parser.py view [-h] [png_file]
+usage: png_parser.py view [-h] [-c] [png_file]
 
 positional arguments:
-  png_file    png file to view
+  png_file       png file to view
 
 options:
-  -h, --help  show this help message and exit
+  -h, --help     show this help message and exit
+  -c, --console  print image to console. image width must be less than 80 pixels, and bit depth must not be 16. only 5 levels of transparency supported. will not work if terminal does not
+                 support truecolor
+
 ```
 
 ## Example
