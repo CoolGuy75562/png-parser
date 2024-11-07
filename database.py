@@ -235,14 +235,8 @@ class Database:
                                 WHERE png_id = ?""",
                              [random_id]
                              )
-            data = self.cur.fetchone()
-            # can make this nicer by making row factory give a dict
-            IHDR_info = {}
-            IHDR_info["width"] = data["width"]
-            IHDR_info["height"] = data["height"]
-            IHDR_info["bit_depth"] = data["bit_depth"]
-            IHDR_info["color_type"] = data["color_type"]
-            IHDR_info["interlace_method"] = data["interlace_method"]
+            IHDR_info = dict(self.cur.fetchone())
+            
             self.cur.execute("""SELECT
                                     chunk_type,
                                     chunk_length,
@@ -256,10 +250,7 @@ class Database:
             PLTE_chunk = None
             for chunk in other_chunks:
                 if chunk["chunk_type"] == "PLTE":
-                    PLTE_chunk = {}
-                    PLTE_chunk["chunk_type"] = chunk["chunk_type"]
-                    PLTE_chunk["chunk_data"] = chunk["chunk_data"]
-                    PLTE_chunk["chunk_length"] = chunk["chunk_length"]
+                    PLTE_chunk = chunk
                     break
             self.cur.execute("""SELECT
                                     chunk_type,
@@ -286,7 +277,9 @@ class Database:
                         'interlace_method': ' = :',
                         'width': ' < :',
                         'height': ' < :',
-                        'chunk_name': " chunk_types LIKE '%' || :chunk_name || '%' "
+                        'chunk_name': (" chunk_types LIKE "
+                                       "'%' || :chunk_name || '%' "
+                                       )
                         }
             query = (("SELECT file_path, width, height, bit_depth, "
                       "color_type, compression_method, filter_method, "
@@ -315,26 +308,15 @@ class Database:
                             FROM chunk_info
                             WHERE png_info.png_id = chunk_info.png_id
                            ) AS chunk_types
-                           FROM png_info
-                           LIMIT :n"""
+                       FROM png_info
+                       LIMIT :n"""
         kwargs['n'] = n;
 
         try:
             self.cur.execute(query, kwargs)
             data = self.cur.fetchall()
             file_paths = [row["file_path"] for row in data]
-            # absolutely disgusting
-            # TODO: row factory
-            png_infos = [{"width": row["width"],
-                          "height": row["height"],
-                          "bit_depth": row["bit_depth"],
-                          "color_type": row["color_type"],
-                          "compression_method": row["compression_method"],
-                          "filter_method": row["filter_method"],
-                          "interlace_method": row["interlace_method"]
-                          }
-                         for row in data
-                         ]
+            png_infos = [dict(row) for row in data]
             png_chunkss = [row["chunk_types"].split(',') for row in data]
 
             return file_paths, png_infos, png_chunkss
